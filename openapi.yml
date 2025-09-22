@@ -1,0 +1,40 @@
+openapi: 3.0.3
+info:
+  title: Simple Name API
+  version: 1.0.0
+
+paths:
+  /create:
+    post:
+      summary: Create a record with a name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "Alice"
+      responses:
+        "201":
+          description: Created
+
+  /read/{id}:
+    get:
+      summary: Read a record by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 1
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
