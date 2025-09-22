@@ -6,67 +6,119 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
-
-var masterDb *sql.DB
-var readDb *sql.DB
-
-func main() {
-
-	connect("postgres://root:root@localhost:5432/school?sslmode=disable", masterDb, "Master")
-	connect("postgres://root:root@localhost:5433/school?sslmode=disable", readDb, "Replica")
-
-	http.HandleFunc("/create", create)
-	http.HandleFunc("/read", read)
-
-	http.ListenAndServe(":4000", nil)
-}
 
 type Record struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 }
 
-func create(w http.ResponseWriter, r *http.Request) {
+var masterDb *sql.DB
+var readDb *sql.DB
+
+func main() {
+	var err error
+
+	masterDb, err = connect("postgres://root:root@localhost:5432/school?sslmode=disable", "Master")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	readDb, err = connect("postgres://root:root@localhost:5433/school?sslmode=disable", "Replica")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	http.HandleFunc("/create", createHandler)
+	http.HandleFunc("/read/", readHandler)
+
+	fmt.Println("Server running on :4000")
+	log.Fatal(http.ListenAndServe(":4000", nil))
+}
+
+func connect(uri string, name string) (*sql.DB, error) {
+	db, err := sql.Open("postgres", uri)
+	if err != nil {
+		return nil, fmt.Errorf("error connecting to %s: %v", name, err)
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("ping failed for %s: %v", name, err)
+	}
+
+	if err := migrate(db); err != nil {
+		return nil, fmt.Errorf("migration failed for %s: %v", name, err)
+	}
+
+	fmt.Println("Connected to DB:", name)
+	return db, nil
+}
+
+func migrate(db *sql.DB) error {
+	query := `
+	CREATE TABLE IF NOT EXISTS records (
+		id SERIAL PRIMARY KEY,
+		name TEXT NOT NULL
+	);`
+	_, err := db.Exec(query)
+	return err
+}
+
+func createHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var input struct {
 		Name string `json:"name"`
 	}
+
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	fmt.Fprintf(w, "created\n")
-}
-
-func read(w http.ResponseWriter, r *http.Request) {
-
-	fmt.Fprintf(w, "read\n")
-}
-
-func connect(uri string, db *sql.DB, name string) {
-	connStr := uri
-	var err error
-	db, err = sql.Open("postgres", connStr)
+	var id int
+	err := masterDb.QueryRow("INSERT INTO records (name) VALUES ($1) RETURNING id", input.Name).Scan(&id)
 	if err != nil {
-		log.Fatal("Error connecting to DB:", err)
+		http.Error(w, "DB insert failed", http.StatusInternalServerError)
+		return
 	}
-	defer db.Close()
 
-	if err := migrate(db); err != nil {
-		log.Fatal("Migration failed:", err)
-	}
-	fmt.Println("Connected to db : ", name)
+	record := Record{ID: id, Name: input.Name}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(record)
 }
 
-func migrate(db *sql.DB) error {
-	query := `
-    CREATE TABLE IF NOT EXISTS records (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL
-    );`
-	_, err := db.Exec(query)
-	return err
+func readHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/read/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	var record Record
+	err = readDb.QueryRow("SELECT id, name FROM records WHERE id=$1", id).Scan(&record.ID, &record.Name)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		http.Error(w, "DB query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(record)
 }
