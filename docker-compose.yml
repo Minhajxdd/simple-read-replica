@@ -1,0 +1,22 @@
+services:
+  master:
+    image: postgres:16
+    container_name: postgres-master
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: school
+    ports:
+      - "5432:5432"
+
+  replica:
+    image: postgres:16
+    container_name: postgres-replica
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: school
+    ports:
+      - "5433:5432"
