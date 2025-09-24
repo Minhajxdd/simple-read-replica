@@ -28,6 +28,10 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if err := migrate(masterDb); err != nil {
+		log.Fatal("migration failed for master cluster: ", err)
+	}
+
 	readDb, err = connect("postgres://root:root@localhost:5433/school?sslmode=disable", "Replica")
 	if err != nil {
 		log.Fatal(err)
@@ -48,10 +52,6 @@ func connect(uri string, name string) (*sql.DB, error) {
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("ping failed for %s: %v", name, err)
-	}
-
-	if err := migrate(db); err != nil {
-		return nil, fmt.Errorf("migration failed for %s: %v", name, err)
 	}
 
 	fmt.Println("Connected to DB:", name)
