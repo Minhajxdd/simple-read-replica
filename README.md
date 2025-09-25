@@ -156,7 +156,8 @@ Now start the replica’s Postgres (it usually starts on its own when the contai
 
 ---
 
-`Simple run the http sever by running the main.go file and use create and read both uses different db connection`
+`Simply run the http sever by running the main.go file and use create and read both uses different db connection`
+`or feel free to inserting and reading clusters manually as well :)`
 
 * The Docker network (`172.18.0.0/16`) makes it easy for the master and replica to talk without fiddling with individual IPs.
 * This is a simple setup — good for learning and local dev. For production, you’d want stronger auth, replication slots, monitoring, etc...
